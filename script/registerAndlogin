@@ -1,0 +1,190 @@
+USE [mtAppBBSG_Cricket]
+GO
+/****** Object:  StoredProcedure [dbo].[pBBSG_AccountLogin]    Script Date: 2019/6/18 18:29:03 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+-- =============================================
+-- Author:		<Author,,hw>
+-- Create date: <Create Date,,>
+-- Description:	<Description,,>
+
+
+-- =============================================
+ALTER PROCEDURE [dbo].[pBBSG_AccountLogin]
+@Recv NVARCHAR(MAX),
+@Send NVARCHAR(MAX) OUTPUT
+AS
+BEGIN
+	-- SET NOCOUNT ON added to prevent extra result sets from
+	-- interfering with SELECT statements.
+	SET NOCOUNT ON;
+	
+	IF ISJSON(@Recv) = 0 BEGIN
+		RETURN 0;
+	END;
+	-------获取协议基础信息
+	DECLARE @page VARCHAR(100), @time datetime,@AccountID bigint,@Account varchar(64),@PassWord varchar(32)
+	SET @AccountID =ISNULL( JSON_VALUE(@Recv,'$.AccountID'),0); 
+	SET @Account=ISNULL(JSON_VALUE(@Recv,'$.Account'),'');
+	SET @PassWord=ISNULL(JSON_VALUE(@Recv,'$.Password'),'');
+	set @time=getdate()
+
+
+	declare @session int 
+	set @session = rand()*1000000
+	set @session = case when @session < 100000 then @session+200000 else @session end
+
+
+	declare @pwd varchar(32)
+	set @pwd=''
+	---玩家账户id验证
+	if @AccountID<>0  and exists(select top 1 'x' from tAccountInfo (nolock) where AccountID=@AccountID) begin
+		print '账号id登录'
+		select @pwd=[Password] ,@account =[Account] from tAccountInfo  (nolock)where AccountID=@AccountID  
+		if @pwd=@PassWord  begin
+			update tAccountInfo set logindate=@time  where  AccountID=@AccountID
+			--写入日志
+			insert into LoginLog (Accountid,LoginTime,Pwd,session) values(cast(@AccountID as varchar(100)) ,@time,@pwd,@session)
+			set @Send='{"Code":"0"'+',"Desc":"成功"'+',"AccountID":"'+cast(@AccountID as varchar(100)) +'","Account":"'+@Account++'","Session":"'+cast(@session as varchar(100))+'"}'
+			return
+		end
+		else begin
+			set @Send='{"Code":"-1"'+',"Desc":"失败"'+'}'
+			print '密码错误'
+		return
+		end  
+	  
+    end
+	else begin----账户验证
+	print '账户登录'
+		if  @Account<>'' and exists(select top 1 'x' from tAccountInfo (nolock) where Account=@Account) begin
+			select  @AccountID=AccountID,@pwd=[PassWord] from   tAccountInfo (nolock)  where Account=@Account
+			if @pwd=@PassWord  begin
+				update tAccountInfo set logindate=@time  where  AccountID=@AccountID
+				--写入日志
+				insert into LoginLog (Accountid,LoginTime,Pwd,session) values(cast(@AccountID as varchar(100)) ,@time,@pwd,@session)
+				set @Send='{"Code":"0"'+',"Desc":"成功"'+',"AccountID":"'+cast(@AccountID as varchar(100)) +'","Account":"'+@Account++'","Session":"'+cast(@session as varchar(100))+'"}'
+				return
+			end
+		end
+		else begin
+			set @Send='{"Code":"-1"'+',"Desc":"失败"''}'
+			print '密码错误'
+			return
+		end
+		
+
+
+	end
+
+
+
+
+ 
+END;
+
+
+
+USE [mtAppBBSG_Cricket]
+GO
+/****** Object:  StoredProcedure [dbo].[pBBSG_AccountRegister]    Script Date: 2019/6/18 18:29:24 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+-- =============================================
+-- Author:		<Author,,hw>
+-- Create date: <Create Date,,>
+-- Description:	<快速注册,自动生成账户、id、密码,>
+-- =============================================
+ALTER PROCEDURE [dbo].[pBBSG_AccountRegister]
+@Recv NVARCHAR(MAX),
+@Send NVARCHAR(MAX) OUTPUT
+AS
+BEGIN
+	-- SET NOCOUNT ON added to prevent extra result sets from
+	-- interfering with SELECT statements.
+	SET NOCOUNT ON;
+	
+	IF ISJSON(@Recv) = 0 BEGIN
+		RETURN 0;
+	END;
+	-------获取协议基础信息
+	DECLARE @page VARCHAR(100), @time datetime;
+	set @time=getdate()
+
+
+	declare @session int 
+	set @session = rand()*1000000
+	set @session = case when @session < 100000 then @session+200000 else @session end
+
+
+
+	--快速注册
+	declare  @password varchar(32),@account varchar(64),@AccountID bigint
+	set @account=''
+	set @password=''
+
+	if isnull(@account,'')='' begin 
+
+		insert into  tAccountInfo (account,password,registerdate,logindate,session) values(@account,@password,@time,@time,@session)
+		select @AccountID = @@identity
+		set @account = 'SG'+cast(@AccountID%100000 as varchar(20))+'SBSF'+left(NEWID(),2)
+		set @password =  substring(sys.fn_sqlvarbasetostr(HashBytes('MD5','SG'+left(cast((@AccountID+rand()*1000000) as varchar(20)),6))),3,32)
+			----保证账户不重复
+		while exists(select top 1 'X' from [tAccountInfo](nolock) where account = @account) begin
+				set @account = 'SG'+cast(@AccountID%100000 as varchar(20))+'SBSF'+left(NEWID(),2) 
+		end
+		 
+		UPDATE  tAccountInfo SET account=@account,password=@password where [AccountID]=@AccountID
+		 ----------------------玩家信息初始化
+		 insert into [tUserDate](userid,[name],[lv],[exp],[coin],[power],[lstPowerTime],[Gem],[propsList]) values(@AccountID,@account,1,0,0,20,@time-1,0,0)
+
+		if exists(select top  1 'x' from tAccountInfo where [AccountID]=@AccountID ) begin
+			set @send='{"Code":"0",'+ '"Desc":"成功",'+ '"Session":"' +cast(@session as nvarchar(100))+'","AccountID":"' +cast(@AccountID as nvarchar(100))+ '","Account":"' +@account +'","Password":"'+@password+ '"}'
+			return
+		end
+		 
+	end
+
+
+
+
+END;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
