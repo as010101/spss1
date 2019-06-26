@@ -1,0 +1,100 @@
+ALTER PROCEDURE [dbo].[pBBSG_bagCtrl] 
+@ctrlType int=0,   ---- 0 查询物品数量 1 修改物品数量（直接指定数目，包含新增）   2 删除物品 3 增加物品数量 （减少物品需先查询是不是有足够的）
+@Userid  bigint,
+@itemId int,
+@itemNum bigint=0 output
+AS
+BEGIN
+	-- SET NOCOUNT ON added to prevent extra result sets from
+	-- interfering with SELECT statements.
+	SET NOCOUNT ON;
+	
+	-----------背包操作 
+	declare @itemKey nvarchar(20) ---物品在背包里面的键 
+	
+	--------------------------------------------非道具物品
+	if (select type from tCfgBag (nolock) where id = @itemId ) = 'cloth' begin
+		if @ctrlType in (1,3)begin
+			set  @itemId = (select [honorId] from [tCfgHonor](nolock) where [srcId] = @itemId )
+			exec pBBSG_subGiveHonor @userid,@itemid
+		end
+		return 
+	end
+	-----------------------------------------------------资源
+	if @itemId=4 begin --元宝
+		if @ctrlType=3 begin
+			update tUserData_New set Gold = Gold + @itemNum where userId = @Userid
+		end
+		return
+	end
+	if @itemId=10002 begin--金币
+		if @ctrlType=3 begin
+			update tUserData_New set [Money] = [Money] + @itemNum where userId = @Userid
+		end
+		return
+	end
+	if @itemId=10003 begin--粮草
+		if @ctrlType=3 begin
+			update tUserData_New set Food = Food + @itemNum where userId = @Userid
+		end
+		return
+	end
+
+	if @itemId=10001 begin--士兵
+		if @ctrlType=3 begin
+			update tUserData_New set Soldier = Soldier + @itemNum where userId = @Userid
+		end
+		return
+	end
+	---------------------------------------------
+	declare @jsonStr nvarchar(2048)
+	set @itemKey = '$.i'+cast(@itemId as varchar(20))
+	 
+	if @ctrlType = 1 and @itemNum = 0 begin  ----实际在执行删除
+		set @ctrlType = 2
+	end
+
+	if @ctrlType = 0 begin ---查询
+		
+		declare @nJsonStr nvarchar(2048) 
+		set @nJsonStr = N'select @a = JSON_VALUE(bag,'''+cast(@itemKey as nvarchar(20))+N''') from [tUserData_New] (nolock) 
+				where [userid] = '+cast(@Userid as nvarchar(12)) 
+		
+		print @nJsonStr
+		print @itemNum
+		exec sp_executesql @nJsonStr,N'@a int output',@itemNum output
+
+		set @itemNum = isnull(@itemNum,0)
+	end else
+	if @ctrlType = 1 begin ---修改物品数量 ----直接指定数量---可用于新增
+		set @jsonStr = 'update [tUserData_New]
+				set bag = JSON_MODIFY(bag,'''+@itemKey+''','+cast(@itemNum as nvarchar(20))+')
+				where [userid] = '+cast(@Userid as nvarchar(12))+''
+	    exec(@jsonStr)
+	end ELSE
+	if @ctrlType = 2 begin ---删除
+		set @jsonStr = 'update [tUserData_New]
+				set bag = JSON_MODIFY(bag,'''+@itemKey+''',null)
+				where [userid] = '+cast(@Userid as nvarchar(12))+''
+		exec(@jsonStr)
+	end  if @ctrlType = 3 begin --增多  ---亦可用于新增
+		print '增加物品'
+		set @jsonStr = 'update [tUserData_New]
+				set bag = JSON_MODIFY(bag,'''+@itemKey+''',isnull(JSON_VALUE(bag,'''+cast(@itemKey as nvarchar(20))+N'''),0)+'+cast(@itemNum as nvarchar(20))+N')
+				where [userid] = '+cast(@Userid as nvarchar(12))+''
+
+		print @jsonStr
+
+		exec(@jsonStr)
+	end
+
+
+
+
+
+
+
+
+	
+	 
+END
