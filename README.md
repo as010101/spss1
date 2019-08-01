@@ -10,4 +10,4 @@ T检验，亦称student t检验（Student's t test），主要用于样本含量
 
 
 #实验显示
-![Image text](https://raw.githubusercontent.com/as010101/spss1/master/imgfolder/QQ%E5%9B%BE%E7%89%872019061009157.png)
+![](https://github.com/as010101/spss1/blob/master/imgfolder/QQ%E5%9B%BE%E7%89%8720190610091557.png)
